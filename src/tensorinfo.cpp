@@ -167,6 +167,14 @@ std::string TensorInfo::getPrecisionAsString() const {
     return getPrecisionAsString(precision);
 }
 
+std::string TensorInfo::getPrecisionAsKFSPrecision(Precision precision) {
+    return ovmsPrecisionToKFSPrecision(precision);
+}
+
+std::string TensorInfo::getPrecisionAsKFSPrecision() const {
+    return getPrecisionAsKFSPrecision(precision);
+}
+
 const std::string TensorInfo::getDataTypeAsString(tensorflow::DataType dataType) {
     switch (dataType) {
     case tensorflow::DataType::DT_FLOAT:
@@ -312,6 +320,21 @@ std::string TensorInfo::tensorShapeToString(const tensorflow::TensorShapeProto& 
             oss << tensorShape.dim(i).size() << ",";
         }
         oss << tensorShape.dim(i).size();
+    }
+    oss << ")";
+
+    return oss.str();
+}
+
+std::string TensorInfo::tensorShapeToString(const google::protobuf::RepeatedField<int64_t>& shape) {
+    std::ostringstream oss;
+    oss << "(";
+    size_t i = 0;
+    if (shape.size() > 0) {
+        for (; i < shape.size() - 1; i++) {
+            oss << shape[i] << ",";
+        }
+        oss << shape[i];
     }
     oss << ")";
 

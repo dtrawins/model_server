@@ -64,16 +64,75 @@ Status serializeTensorToTensorProto(
         return StatusCode::INTERNAL_ERROR;
     }
     for (size_t i = 0; i < effectiveNetworkOutputShape.size(); ++i) {
-        dimension_value_t dim;
-        if (!effectiveNetworkOutputShape[i].match(actualTensorShape[i])) {
+        dimension_value_t dim = actualTensorShape[i];
+        if (!effectiveNetworkOutputShape[i].match(dim)) {
             SPDLOG_ERROR("Failed to serialize tensor: {}. There is difference in dimension:{} expected:{} vs actual:{}",
-                servableOutput->getName(), i, effectiveNetworkOutputShape[i].toString(), actualTensorShape[i]);
+                servableOutput->getName(), i, effectiveNetworkOutputShape[i].toString(), dim);
             return StatusCode::INTERNAL_ERROR;
         }
-        dim = actualTensorShape[i];
         responseOutput.mutable_tensor_shape()->add_dim()->set_size(dim);
     }
     responseOutput.mutable_tensor_content()->assign((char*)tensor.data(), tensor.get_byte_size());
+    return StatusCode::OK;
+}
+
+Status serializeTensorToTensorProto(
+    ::inference::ModelInferResponse::InferOutputTensor& responseOutput,
+    std::string* rawOutputContents,
+    const std::shared_ptr<TensorInfo>& servableOutput,
+    ov::Tensor& tensor) {
+    responseOutput.Clear();
+    responseOutput.set_name(servableOutput->getName());
+    if (servableOutput->getOvPrecision() != tensor.get_element_type()) {
+        SPDLOG_ERROR("Failed to serialize tensor: {}. There is difference in precision expected:{} vs actual:{}",
+            servableOutput->getName(),
+            TensorInfo::getPrecisionAsString(servableOutput->getPrecision()),
+            tensor.get_element_type().get_type_name());
+        return StatusCode::INTERNAL_ERROR;
+    }
+    switch (servableOutput->getPrecision()) {
+    case ovms::Precision::FP64:
+    case ovms::Precision::FP32:
+    case ovms::Precision::FP16:
+    case ovms::Precision::I64:
+    case ovms::Precision::I32:
+    case ovms::Precision::I16:
+    case ovms::Precision::I8:
+    case ovms::Precision::U64:
+    case ovms::Precision::U32:
+    case ovms::Precision::U16:
+    case ovms::Precision::U8:
+    case ovms::Precision::BOOL:
+        responseOutput.set_datatype(servableOutput->getPrecisionAsKFSPrecision());
+        break;
+    case ovms::Precision::UNDEFINED:
+    case ovms::Precision::MIXED:
+    case ovms::Precision::Q78:
+    case ovms::Precision::BIN:
+    default: {
+        Status status = StatusCode::OV_UNSUPPORTED_SERIALIZATION_PRECISION;
+        SPDLOG_ERROR(status.string());
+        return status;
+    }
+    }
+    responseOutput.clear_shape();
+    auto& effectiveNetworkOutputShape = servableOutput->getShape();
+    ov::Shape actualTensorShape = tensor.get_shape();
+    if (effectiveNetworkOutputShape.size() != actualTensorShape.size()) {
+        SPDLOG_ERROR("Failed to serialize tensor: {}. There is difference in number of dimensions expected:{} vs actual:{}",
+            servableOutput->getName(), effectiveNetworkOutputShape.size(), actualTensorShape.size());
+        return StatusCode::INTERNAL_ERROR;
+    }
+    for (size_t i = 0; i < effectiveNetworkOutputShape.size(); ++i) {
+        dimension_value_t dim = actualTensorShape[i];
+        if (!effectiveNetworkOutputShape[i].match(dim)) {
+            SPDLOG_ERROR("Failed to serialize tensor: {}. There is difference in dimension:{} expected:{} vs actual:{}",
+                servableOutput->getName(), i, effectiveNetworkOutputShape[i].toString(), dim);
+            return StatusCode::INTERNAL_ERROR;
+        }
+        responseOutput.add_shape(dim);
+    }
+    rawOutputContents->assign((char*)tensor.data(), tensor.get_byte_size());
     return StatusCode::OK;
 }
 
@@ -83,33 +142,27 @@ Status OutputGetter<ov::InferRequest&>::get(const std::string& name, ov::Tensor&
         tensor = outputSource.get_tensor(name);
     } catch (const ov::Exception& e) {
         Status status = StatusCode::OV_INTERNAL_SERIALIZATION_ERROR;
-        SPDLOG_ERROR("{}: {}", status.string(), e.what());
+        SPDLOG_DEBUG("{}: {}", status.string(), e.what());
         return status;
     }
     return StatusCode::OK;
 }
 
-Status serializePredictResponse(
-    ov::InferRequest& inferRequest,
-    const tensor_map_t& outputMap,
-    tensorflow::serving::PredictResponse* response) {
-    Status status;
-    for (const auto& pair : outputMap) {
-        auto servableOutput = pair.second;
-        ov::Tensor tensor;
-        OutputGetter<ov::InferRequest&> outputGetter(inferRequest);
-        status = outputGetter.get(servableOutput->getName(), tensor);
-        if (!status.ok()) {
-            return status;
-        }
-        auto& tensorProto = (*response->mutable_outputs())[servableOutput->getMappedName()];
-        status = serializeTensorToTensorProto(tensorProto, servableOutput, tensor);
-        if (!status.ok()) {
-            return status;
-        }
-    }
-
-    return status;
+template <>
+tensorflow::TensorProto& ProtoGetter<tensorflow::serving::PredictResponse*, tensorflow::TensorProto&>::get(const std::string& name) {
+    return (*protoStorage->mutable_outputs())[name];
 }
 
+template <>
+::inference::ModelInferResponse::InferOutputTensor& ProtoGetter<::inference::ModelInferResponse*, ::inference::ModelInferResponse::InferOutputTensor&>::get(const std::string& name) {
+    return *protoStorage->add_outputs();
+}
+
+const std::string& getTensorInfoName(const std::string& first, const TensorInfo& tensorInfo) {
+    return tensorInfo.getName();
+}
+
+const std::string& getOutputMapKeyName(const std::string& first, const TensorInfo& tensorInfo) {
+    return first;
+}
 }  // namespace ovms

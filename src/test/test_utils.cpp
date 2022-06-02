@@ -18,9 +18,74 @@
 #include <functional>
 
 #include "../prediction_service_utils.hpp"
+#include "../tensorinfo.hpp"
 
 using tensorflow::serving::PredictRequest;
 using tensorflow::serving::PredictResponse;
+
+using ovms::TensorInfo;
+
+void preparePredictRequest(::inference::ModelInferRequest& request, inputs_info_t requestInputs, const std::vector<float>& data) {
+    request.mutable_inputs()->Clear();
+    request.mutable_raw_input_contents()->Clear();
+    for (auto const& it : requestInputs) {
+        prepareKFSInferInputTensor(request, it.first, it.second, data);
+    }
+}
+
+void preparePredictRequest(tensorflow::serving::PredictRequest& request, inputs_info_t requestInputs, const std::vector<float>& data) {
+    request.mutable_inputs()->clear();
+    for (auto const& it : requestInputs) {
+        auto& name = it.first;
+        auto [shape, precision] = it.second;
+
+        auto& input = (*request.mutable_inputs())[name];
+        auto datatype = TensorInfo::getPrecisionAsDataType(precision);
+        input.set_dtype(datatype);
+        size_t numberOfElements = 1;
+        for (auto const& dim : shape) {
+            input.mutable_tensor_shape()->add_dim()->set_size(dim);
+            numberOfElements *= dim;
+        }
+        switch (datatype) {
+        case tensorflow::DataType::DT_HALF: {
+            if (data.size() == 0) {
+                for (size_t i = 0; i < numberOfElements; i++) {
+                    input.add_half_val('1');
+                }
+            } else {
+                for (size_t i = 0; i < data.size(); i++) {
+                    input.add_half_val(data[i]);
+                }
+            }
+            break;
+        }
+        case tensorflow::DataType::DT_UINT16: {
+            if (data.size() == 0) {
+                for (size_t i = 0; i < numberOfElements; i++) {
+                    input.add_int_val('1');
+                }
+            } else {
+                for (size_t i = 0; i < data.size(); i++) {
+                    input.add_int_val(data[i]);
+                }
+            }
+            break;
+        }
+        default: {
+            if (data.size() == 0) {
+                // TODO in case of DT_HALF & DT_UINT16 we add tensor content two times
+                *input.mutable_tensor_content() = std::string(numberOfElements * tensorflow::DataTypeSize(datatype), '1');
+            } else {
+                std::string content;
+                content.resize(numberOfElements * tensorflow::DataTypeSize(datatype));
+                std::memcpy(content.data(), data.data(), content.size());
+                *input.mutable_tensor_content() = content;
+            }
+        }
+        }
+    }
+}
 
 void waitForOVMSConfigReload(ovms::ModelManager& manager) {
     // This is effectively multiplying by 1.2 to have 1 config reload in between
@@ -120,7 +185,35 @@ bool isShapeTheSame(const tensorflow::TensorShapeProto& actual, const std::vecto
         }
         SPDLOG_ERROR("Shape mismatch: {}", ss.str());
     }
-    return true;
+    return same;
+}
+
+extern bool isShapeTheSame(const google::protobuf::RepeatedField<int64_t>& actual, const std::vector<int64_t>&& expected) {
+    bool same = true;
+    int a_size = actual.size();
+    if (a_size != int(expected.size())) {
+        SPDLOG_ERROR("Unexpected dim_size. Got: {}, Expect: {}", a_size, expected.size());
+        return false;
+    }
+    for (int i = 0; i < a_size; i++) {
+        if (actual.at(i) != expected[i]) {
+            SPDLOG_ERROR("Unexpected dim[{}]. Got: {}, Expect: {}", i, actual.at(i), expected[i]);
+            same = false;
+            break;
+        }
+    }
+    if (same == false) {
+        std::stringstream ss;
+        for (int i = 0; i < a_size; i++) {
+            ss << "dim["
+               << i
+               << "] got:"
+               << actual.at(i)
+               << " expect:" << expected[i];
+        }
+        SPDLOG_ERROR("Shape mismatch: {}", ss.str());
+    }
+    return same;
 }
 
 void readImage(const std::string& path, size_t& filesize, std::unique_ptr<char[]>& image_bytes) {
@@ -169,4 +262,73 @@ tensorflow::serving::PredictRequest prepareBinary4x4PredictRequest(const std::st
     tensor.set_dtype(tensorflow::DataType::DT_STRING);
     tensor.mutable_tensor_shape()->add_dim()->set_size(batchSize);
     return request;
+}
+
+::inference::ModelInferRequest_InferInputTensor* findKFSInferInputTensor(::inference::ModelInferRequest& request, const std::string& name) {
+    auto it = request.mutable_inputs()->begin();
+    while (it != request.mutable_inputs()->end()) {
+        if (it->name() == name)
+            break;
+        ++it;
+    }
+    return it == request.mutable_inputs()->end() ? nullptr : &(*it);
+}
+
+std::string* findKFSInferInputTensorContent(::inference::ModelInferRequest& request, const std::string& name) {
+    auto it = request.mutable_inputs()->begin();
+    size_t bufferId = 0;
+    std::string* content = nullptr;
+    while (it != request.mutable_inputs()->end()) {
+        if (it->name() == name)
+            break;
+        ++it;
+        ++bufferId;
+    }
+    if (it != request.mutable_inputs()->end()) {
+        content = request.mutable_raw_input_contents()->Mutable(bufferId);
+    }
+    return content;
+}
+void prepareKFSInferInputTensor(::inference::ModelInferRequest& request, const std::string& name, const std::tuple<ovms::shape_t, const ovms::Precision>& inputInfo,
+    const std::vector<float>& data) {
+    auto [shape, type] = inputInfo;
+    prepareKFSInferInputTensor(request, name,
+        {shape, TensorInfo::getPrecisionAsKFSPrecision(type)},
+        data);
+}
+
+void prepareKFSInferInputTensor(::inference::ModelInferRequest& request, const std::string& name, const std::tuple<ovms::shape_t, const std::string>& inputInfo,
+    const std::vector<float>& data) {
+    auto it = request.mutable_inputs()->begin();
+    size_t bufferId = 0;
+    while (it != request.mutable_inputs()->end()) {
+        if (it->name() == name)
+            break;
+        ++it;
+        ++bufferId;
+    }
+    ::inference::ModelInferRequest_InferInputTensor* tensor;
+    std::string* content;
+    if (it != request.mutable_inputs()->end()) {
+        tensor = &*it;
+        content = request.mutable_raw_input_contents()->Mutable(bufferId);
+    } else {
+        tensor = request.add_inputs();
+        content = request.add_raw_input_contents();
+    }
+    auto [shape, dtype] = inputInfo;
+    tensor->set_name(name);
+    tensor->set_datatype(dtype);
+    size_t numberOfElements = 1;
+    tensor->mutable_shape()->Clear();
+    for (auto const& dim : shape) {
+        tensor->add_shape(dim);
+        numberOfElements *= dim;
+    }
+    if (data.size() == 0) {
+        content->assign(numberOfElements * ovms::KFSDataTypeSize(dtype), '1');
+    } else {
+        content->resize(numberOfElements * ovms::KFSDataTypeSize(dtype));
+        std::memcpy(content->data(), data.data(), content->size());
+    }
 }

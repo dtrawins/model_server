@@ -22,12 +22,13 @@
 #include "executingstreamidguard.hpp"
 #include "logging.hpp"
 #include "predict_request_validation_utils.hpp"
+#include "profiler.hpp"
 #include "serialization.hpp"
 #include "timer.hpp"
 
 namespace ovms {
 
-const std::set<const char*> StatefulModelInstance::SPECIAL_INPUT_NAMES{"sequence_id", "sequence_control_input"};
+const std::set<std::string> StatefulModelInstance::SPECIAL_INPUT_NAMES{"sequence_id", "sequence_control_input"};
 
 const Status StatefulModelInstance::extractSequenceId(const tensorflow::TensorProto& proto, uint64_t& sequenceId) {
     if (!proto.tensor_shape().dim_size()) {
@@ -145,6 +146,7 @@ Status StatefulModelInstance::loadOVCompiledModel(const ModelConfig& config) {
     return ModelInstance::loadOVCompiledModel(config);
 }
 
+template <>
 const Status StatefulModelInstance::validateSpecialKeys(const tensorflow::serving::PredictRequest* request, SequenceProcessingSpec& sequenceProcessingSpec) {
     uint64_t sequenceId = 0;
     uint32_t sequenceControlInput = 0;
@@ -175,7 +177,9 @@ const Status StatefulModelInstance::validateSpecialKeys(const tensorflow::servin
     return StatusCode::OK;
 }
 
-const Status StatefulModelInstance::validate(const tensorflow::serving::PredictRequest* request, SequenceProcessingSpec& sequenceProcessingSpec) {
+template <typename RequestType>
+const Status StatefulModelInstance::validate(const RequestType* request, SequenceProcessingSpec& sequenceProcessingSpec) {
+    OVMS_PROFILE_FUNCTION();
     auto status = validateSpecialKeys(request, sequenceProcessingSpec);
     if (!status.ok())
         return status;
@@ -193,6 +197,7 @@ const Status StatefulModelInstance::validate(const tensorflow::serving::PredictR
 Status StatefulModelInstance::infer(const tensorflow::serving::PredictRequest* requestProto,
     tensorflow::serving::PredictResponse* responseProto,
     std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr) {
+    OVMS_PROFILE_FUNCTION();
     Timer timer;
     using std::chrono::microseconds;
     SequenceProcessingSpec sequenceProcessingSpec;
@@ -248,7 +253,8 @@ Status StatefulModelInstance::infer(const tensorflow::serving::PredictRequest* r
         requestProto->model_spec().name(), getVersion(), executingInferId, timer.elapsed<microseconds>("prediction") / 1000);
 
     timer.start("serialize");
-    status = serializePredictResponse(inferRequest, getOutputsInfo(), responseProto);
+    OutputGetter<ov::InferRequest&> outputGetter(inferRequest);
+    status = serializePredictResponse(outputGetter, getOutputsInfo(), responseProto, getTensorInfoName);
     timer.stop("serialize");
     if (!status.ok())
         return status;

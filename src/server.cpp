@@ -31,10 +31,12 @@
 
 #include "config.hpp"
 #include "http_server.hpp"
+#include "kfs_grpc_inference_service.hpp"
 #include "logging.hpp"
 #include "model_service.hpp"
 #include "modelmanager.hpp"
 #include "prediction_service.hpp"
+#include "profiler.hpp"
 #include "stringutils.hpp"
 #include "version.hpp"
 
@@ -168,7 +170,8 @@ void installSignalHandlers() {
 
 std::vector<std::unique_ptr<Server>> startGRPCServer(
     PredictionServiceImpl& predict_service,
-    ModelServiceImpl& model_service) {
+    ModelServiceImpl& model_service,
+    KFSInferenceServiceImpl& grpcInferenceService) {
     const int GIGABYTE = 1024 * 1024 * 1024;
 
     std::vector<GrpcChannelArgument> channel_arguments;
@@ -193,6 +196,7 @@ std::vector<std::unique_ptr<Server>> startGRPCServer(
     builder.AddListeningPort(config.grpcBindAddress() + ":" + std::to_string(config.port()), grpc::InsecureServerCredentials());
     builder.RegisterService(&predict_service);
     builder.RegisterService(&model_service);
+    builder.RegisterService(&grpcInferenceService);
     for (const GrpcChannelArgument& channel_argument : channel_arguments) {
         // gRPC accept arguments of two types, int and string. We will attempt to
         // parse each arg as int and pass it on as such if successful. Otherwise we
@@ -255,10 +259,19 @@ int server_main(int argc, char** argv) {
         auto& config = ovms::Config::instance().parse(argc, argv);
         configure_logger(config.logLevel(), config.logPath());
 
+#ifdef MTR_ENABLED
+        auto profiler = Profiler(config.tracePath());
+        if (!profiler.isInitialized()) {
+            SPDLOG_ERROR("Cannot open file for profiler, --trace_path: {}", config.tracePath());
+            return EXIT_FAILURE;
+        }
+#endif
+
         PredictionServiceImpl predict_service;
         ModelServiceImpl model_service;
+        KFSInferenceServiceImpl kfsGrpcInferenceService;
 
-        auto grpc = startGRPCServer(predict_service, model_service);
+        auto grpc = startGRPCServer(predict_service, model_service, kfsGrpcInferenceService);
         auto rest = startRESTServer();
 
         while (!shutdown_request) {

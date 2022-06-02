@@ -42,6 +42,11 @@
 #include "status.hpp"
 #include "tensorinfo.hpp"
 
+namespace inference {
+class ModelInferRequest;
+class ModelInferResponse;
+}  // namespace inference
+
 namespace ovms {
 
 using tensor_map_t = std::map<std::string, std::shared_ptr<TensorInfo>>;
@@ -218,7 +223,9 @@ protected:
          */
     Status loadOVModelUsingCustomLoader();
 
-    virtual const Status validate(const tensorflow::serving::PredictRequest* request);
+public:  // TODO remove public when ModelInstance::infer implemented
+    template <typename RequestType>
+    const Status validate(const RequestType* request);
 
 private:
     /**
@@ -503,8 +510,10 @@ public:
          * 
          * @return Status
          */
-
-    Status reloadModelIfRequired(Status validationStatus, const tensorflow::serving::PredictRequest* requestProto,
+    Status reloadModelIfRequired(
+        Status validationStatus,
+        const std::optional<Dimension>& requestedBatchSize,
+        const std::map<std::string, shape_t>& requestedShapes,
         std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr);
 
     /**
@@ -542,6 +551,9 @@ public:
 
     virtual Status infer(const tensorflow::serving::PredictRequest* requestProto,
         tensorflow::serving::PredictResponse* responseProto,
+        std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr);
+    virtual Status infer(const ::inference::ModelInferRequest* requestProto,
+        ::inference::ModelInferResponse* responseProto,
         std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr);
 };
 }  // namespace ovms

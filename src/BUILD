@@ -42,6 +42,8 @@ cc_library(
     ],
 )
 
+load("@com_google_protobuf//:protobuf.bzl", "cc_proto_library")
+
 cc_library(
     name = "ovms_lib",
     linkstatic = 1,
@@ -101,6 +103,8 @@ cc_library(
         "gathernodeinputhandler.hpp",
         "gcsfilesystem.cpp",
         "gcsfilesystem.hpp",
+        "kfs_grpc_inference_service.cpp",
+        "kfs_grpc_inference_service.hpp",
         "model.cpp",
         "model.hpp",
         "model_version_policy.cpp",
@@ -150,6 +154,7 @@ cc_library(
         "pipelineeventqueue.hpp",
         "pipeline_factory.cpp",
         "pipeline_factory.hpp",
+        "precision.cpp",
         "precision.hpp",
         "prediction_service.cpp",
         "prediction_service.hpp",
@@ -157,6 +162,8 @@ cc_library(
         "prediction_service_utils.cpp",
         "predict_request_validation_utils.hpp",
         "predict_request_validation_utils.cpp",
+        "profiler.cpp",
+        "profiler.hpp",
         "rest_parser.cpp",
         "rest_parser.hpp",
         "rest_utils.cpp",
@@ -180,11 +187,13 @@ cc_library(
         "statefulmodelinstance.hpp",
         "status.cpp",
         "status.hpp",
+        "stringutils.cpp",
         "stringutils.hpp",
         "queue.hpp",
         "tensorinfo.cpp",
         "tensorinfo.hpp",
         "tensormap.hpp",
+        "tensor_utils.hpp",
         "threadsafequeue.hpp",
         "timer.hpp",
         "version.hpp",
@@ -196,6 +205,7 @@ cc_library(
     deps = [
         "@tensorflow_serving//tensorflow_serving/apis:prediction_service_cc_proto",
         "@tensorflow_serving//tensorflow_serving/apis:model_service_cc_proto",
+        "@minitrace//:trace",
         "@com_github_grpc_grpc//:grpc++",
         "@org_tensorflow//tensorflow/core:framework",
         "@rapidjson//:rapidjson",
@@ -204,9 +214,9 @@ cc_library(
         "@awssdk//:s3",
         "@awssdk//:core",
         "@awssdk//:deps",
-	    "@azure//:storage",
-	    "@cpprest//:sdk",
-	    "@boost//:lib",
+        "@azure//:storage",
+        "@cpprest//:sdk",
+        "@boost//:lib",
         "@com_github_googleapis_google_cloud_cpp//google/cloud/storage:storage_client",
         "@tensorflow_serving//tensorflow_serving/util/net_http/server/public:http_server",
         "@tensorflow_serving//tensorflow_serving/util/net_http/server/public:http_server_api",
@@ -214,9 +224,11 @@ cc_library(
         "@tensorflow_serving//tensorflow_serving/util:json_tensor",
         "@openvino//:openvino",
         "@opencv//:opencv",
+        #":kfserving_api_cpp",
+        "//src/kfserving_api:kfserving_api_cpp",
     ],
     local_defines = [
-        "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG"
+        "SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE",
     ],
     copts = [
         "-Wall",
@@ -466,6 +478,7 @@ cc_test(
         "test/get_model_metadata_signature_test.cpp",
         "test/get_model_metadata_validation_test.cpp",
         "test/http_rest_api_handler_test.cpp",
+        "test/kfs_metadata_test.cpp",
         "test/layout_test.cpp",
         "test/localfilesystem_test.cpp",
         "test/mockmodelinstancechangingstates.hpp",
@@ -501,6 +514,7 @@ cc_test(
         "test/status_test.cpp",
         "test/stringutils_test.cpp",
         "test/tensorinfo_test.cpp",
+        "test/tensorutils_test.cpp",
         "test/test_utils.cpp",
         "test/test_utils.hpp",
         "test/threadsafequeue_test.cpp",

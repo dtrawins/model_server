@@ -39,6 +39,7 @@
 #include "ov_utils.hpp"
 #include "predict_request_validation_utils.hpp"
 #include "prediction_service_utils.hpp"
+#include "profiler.hpp"
 #include "serialization.hpp"
 #include "shape.hpp"
 #include "stringutils.hpp"
@@ -184,7 +185,7 @@ Status applyLayoutConfiguration(const ModelConfig& config, std::shared_ptr<ov::M
         try {
             std::string name = input.get_any_name();
             std::string mappedName = config.getMappingInputByKey(name).empty() ? name : config.getMappingInputByKey(name);
-
+            // preproc.input(name).tensor().set_element_type(ov::element::i8); // TODO remove after full alternative buffer deserialization& serialization implemented
             if (config.getLayout().isSet()) {
                 SPDLOG_LOGGER_DEBUG(modelmanager_logger, "model: {}, version: {}; Adding preprocessing step: Tensor Layout:{}; Network Layout:{}; single input",
                     modelName,
@@ -244,7 +245,7 @@ Status applyLayoutConfiguration(const ModelConfig& config, std::shared_ptr<ov::M
         try {
             std::string name = output.get_any_name();
             std::string mappedName = config.getMappingOutputByKey(name).empty() ? name : config.getMappingOutputByKey(name);
-
+            // preproc.output(name).tensor().set_element_type(ov::element::i8); // TODO remove after full alternative buffer deserialization& serialization implemented
             if (config.getLayouts().count(mappedName) > 0) {
                 auto& layout = config.getLayouts().at(mappedName);
                 SPDLOG_LOGGER_DEBUG(modelmanager_logger, "model: {}, version: {}; Adding postprocessing step: Tensor Layout:{}; Network Layout:{}; output name: {}",
@@ -685,6 +686,7 @@ Status ModelInstance::loadOVCompiledModel(const ModelConfig& config) {
             config.getTargetDevice());
         return status;
     }
+
     SPDLOG_LOGGER_INFO(modelmanager_logger, "Plugin config for device: {}", targetDevice);
     for (const auto pair : pluginConfig) {
         const auto key = pair.first;
@@ -954,12 +956,13 @@ Status ModelInstance::reloadModel(std::optional<Dimension> batchSize, std::map<s
 
 Status ModelInstance::reloadModelIfRequired(
     Status validationStatus,
-    const tensorflow::serving::PredictRequest* requestProto,
+    const std::optional<Dimension>& requestedBatchSize,
+    const std::map<std::string, shape_t>& requestedShapes,
     std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr) {
     Status status = validationStatus;
     if (status.batchSizeChangeRequired()) {
         try {
-            status = reloadModel(getRequestBatchSize(requestProto, this->getBatchSizeIndex()), {}, modelUnloadGuardPtr);
+            status = reloadModel(requestedBatchSize, {}, modelUnloadGuardPtr);
         } catch (const std::exception& e) {
             status = Status(StatusCode::INVALID_BATCH_DIMENSION, e.what());
         }
@@ -968,7 +971,7 @@ Status ModelInstance::reloadModelIfRequired(
                 getName(), getVersion(), status.getCode(), status.string());
         }
     } else if (status.reshapeRequired()) {
-        status = reloadModel(std::nullopt, getRequestShapes(requestProto), modelUnloadGuardPtr);
+        status = reloadModel(std::nullopt, requestedShapes, modelUnloadGuardPtr);
         if (!status.ok() && status != StatusCode::RESHAPE_ERROR) {
             SPDLOG_ERROR("Model: {}, version: {} reload (reshape) failed. Status Code: {}, Error: {}",
                 getName(), getVersion(), status.getCode(), status.string());
@@ -1078,8 +1081,10 @@ void ModelInstance::unloadModelComponents() {
     }
 }
 
-const Status ModelInstance::validate(const tensorflow::serving::PredictRequest* request) {
-    static const std::set<const char*> optionalInputNames = {};
+template <typename RequestType>
+const Status ModelInstance::validate(const RequestType* request) {
+    OVMS_PROFILE_FUNCTION();
+    static const std::set<std::string> optionalInputNames = {};
     return request_validation_utils::validate(
         *request,
         getInputsInfo(),
@@ -1090,10 +1095,18 @@ const Status ModelInstance::validate(const tensorflow::serving::PredictRequest* 
         getModelConfig().getShapes());
 }
 
+template const Status ModelInstance::validate(const ::inference::ModelInferRequest* request);
+template const Status ModelInstance::validate(const tensorflow::serving::PredictRequest* request);
+
 Status ModelInstance::performInference(ov::InferRequest& inferRequest) {
+    OVMS_PROFILE_FUNCTION();
     try {
+        OVMS_PROFILE_SYNC_BEGIN("ov::InferRequest::start_async");
         inferRequest.start_async();
+        OVMS_PROFILE_SYNC_END("ov::InferRequest::start_async");
+        OVMS_PROFILE_SYNC_BEGIN("ov::InferRequest::wait");
         inferRequest.wait();
+        OVMS_PROFILE_SYNC_END("ov::InferRequest::wait");
     } catch (const ov::Exception& e) {
         Status status = StatusCode::OV_INTERNAL_INFERENCE_ERROR;
         SPDLOG_ERROR("Async caught an exception {}: {}", status.string(), e.what());
@@ -1105,11 +1118,14 @@ Status ModelInstance::performInference(ov::InferRequest& inferRequest) {
 Status ModelInstance::infer(const tensorflow::serving::PredictRequest* requestProto,
     tensorflow::serving::PredictResponse* responseProto,
     std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr) {
+    OVMS_PROFILE_FUNCTION();
     Timer timer;
     using std::chrono::microseconds;
 
     auto status = validate(requestProto);
-    status = reloadModelIfRequired(status, requestProto, modelUnloadGuardPtr);
+    auto requestBatchSize = getRequestBatchSize(requestProto, this->getBatchSizeIndex());
+    auto requestShapes = getRequestShapes(requestProto);
+    status = reloadModelIfRequired(status, requestBatchSize, requestShapes, modelUnloadGuardPtr);
     if (!status.ok())
         return status;
     timer.start("get infer request");
@@ -1139,13 +1155,66 @@ Status ModelInstance::infer(const tensorflow::serving::PredictRequest* requestPr
         requestProto->model_spec().name(), getVersion(), executingInferId, timer.elapsed<microseconds>("prediction") / 1000);
 
     timer.start("serialize");
-    status = serializePredictResponse(inferRequest, getOutputsInfo(), responseProto);
+    OutputGetter<ov::InferRequest&> outputGetter(inferRequest);
+    status = serializePredictResponse(outputGetter, getOutputsInfo(), responseProto, getTensorInfoName);
     timer.stop("serialize");
     if (!status.ok())
         return status;
 
     SPDLOG_DEBUG("Serialization duration in model {}, version {}, nireq {}: {:.3f} ms",
         requestProto->model_spec().name(), getVersion(), executingInferId, timer.elapsed<microseconds>("serialize") / 1000);
+
+    return StatusCode::OK;
+}
+
+Status ModelInstance::infer(const ::inference::ModelInferRequest* requestProto,
+    ::inference::ModelInferResponse* responseProto,
+    std::unique_ptr<ModelInstanceUnloadGuard>& modelUnloadGuardPtr) {
+    OVMS_PROFILE_FUNCTION();
+    Timer timer;
+    using std::chrono::microseconds;
+
+    auto status = validate(requestProto);
+    auto requestBatchSize = getRequestBatchSize(requestProto, this->getBatchSizeIndex());
+    auto requestShapes = getRequestShapes(requestProto);
+    status = reloadModelIfRequired(status, requestBatchSize, requestShapes, modelUnloadGuardPtr);
+    if (!status.ok())
+        return status;
+    timer.start("get infer request");
+    ExecutingStreamIdGuard executingStreamIdGuard(getInferRequestsQueue());
+    int executingInferId = executingStreamIdGuard.getId();
+    ov::InferRequest& inferRequest = executingStreamIdGuard.getInferRequest();
+    timer.stop("get infer request");
+    SPDLOG_DEBUG("Getting infer req duration in model {}, version {}, nireq {}: {:.3f} ms",
+        requestProto->model_name(), getVersion(), executingInferId, timer.elapsed<microseconds>("get infer request") / 1000);
+
+    timer.start("deserialize");
+    InputSink<ov::InferRequest&> inputSink(inferRequest);
+    bool isPipeline = false;
+    status = deserializePredictRequest<ConcreteTensorProtoDeserializator>(*requestProto, getInputsInfo(), inputSink, isPipeline);
+    timer.stop("deserialize");
+    if (!status.ok())
+        return status;
+    SPDLOG_DEBUG("Deserialization duration in model {}, version {}, nireq {}: {:.3f} ms",
+        requestProto->model_name(), getVersion(), executingInferId, timer.elapsed<microseconds>("deserialize") / 1000);
+
+    timer.start("prediction");
+    status = performInference(inferRequest);
+    timer.stop("prediction");
+    if (!status.ok())
+        return status;
+    SPDLOG_DEBUG("Prediction duration in model {}, version {}, nireq {}: {:.3f} ms",
+        requestProto->model_name(), getVersion(), executingInferId, timer.elapsed<microseconds>("prediction") / 1000);
+
+    timer.start("serialize");
+    OutputGetter<ov::InferRequest&> outputGetter(inferRequest);
+    status = serializePredictResponse(outputGetter, getOutputsInfo(), responseProto, getTensorInfoName);
+    timer.stop("serialize");
+    if (!status.ok())
+        return status;
+
+    SPDLOG_DEBUG("Serialization duration in model {}, version {}, nireq {}: {:.3f} ms",
+        requestProto->model_name(), getVersion(), executingInferId, timer.elapsed<microseconds>("serialize") / 1000);
 
     return StatusCode::OK;
 }

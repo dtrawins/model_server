@@ -407,7 +407,10 @@ void TestCustomLoader::performPredict(const std::string modelName,
     ASSERT_TRUE(validationStatus == ovms::StatusCode::OK ||
                 validationStatus == ovms::StatusCode::RESHAPE_REQUIRED ||
                 validationStatus == ovms::StatusCode::BATCHSIZE_CHANGE_REQUIRED);
-    ASSERT_EQ(modelInstance->reloadModelIfRequired(validationStatus, &request, modelInstanceUnloadGuard), ovms::StatusCode::OK);
+    auto bsPositionIndex = 0;
+    auto requestBatchSize = ovms::getRequestBatchSize(&request, bsPositionIndex);
+    auto requestShapes = ovms::getRequestShapes(&request);
+    ASSERT_EQ(modelInstance->reloadModelIfRequired(validationStatus, requestBatchSize, requestShapes, modelInstanceUnloadGuard), ovms::StatusCode::OK);
 
     ovms::ExecutingStreamIdGuard executingStreamIdGuard(modelInstance->getInferRequestsQueue());
     ov::InferRequest& inferRequest = executingStreamIdGuard.getInferRequest();
@@ -594,9 +597,10 @@ TEST_F(TestCustomLoader, CustomLoaderPrediction) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 }
 
@@ -642,9 +646,10 @@ TEST_F(TestCustomLoader, CustomLoaderPredictDeletePredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     tensorflow::serving::PredictResponse response;
     ASSERT_EQ(performInferenceWithRequest(request, response), ovms::StatusCode::OK);
 
@@ -668,9 +673,10 @@ TEST_F(TestCustomLoader, CustomLoaderPredictNewVersionPredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 
     // Copy version 1 to version 2
@@ -678,9 +684,9 @@ TEST_F(TestCustomLoader, CustomLoaderPredictNewVersionPredict) {
     std::filesystem::copy(cl_model_1_path + "1", cl_model_1_path + "2", std::filesystem::copy_options::recursive);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    request = preparePredictRequest(
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 2, request);
 }
 
@@ -697,9 +703,10 @@ TEST_F(TestCustomLoader, CustomLoaderPredictNewModelPredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 
     // Copy model1 to model2
@@ -714,9 +721,9 @@ TEST_F(TestCustomLoader, CustomLoaderPredictNewModelPredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    request = preparePredictRequest(
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
     performPredict("dummy-new", 1, request);
 }
@@ -734,9 +741,10 @@ TEST_F(TestCustomLoader, CustomLoaderPredictRemoveCustomLoaderOptionsPredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 
     // Replace model path in the config string
@@ -763,9 +771,10 @@ TEST_F(TestCustomLoader, PredictNormalModelAddCustomLoaderOptionsPredict) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 
     // Replace model path in the config string
@@ -793,9 +802,10 @@ TEST_F(TestCustomLoader, CustomLoaderOptionWithUnknownLibrary) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     tensorflow::serving::PredictResponse response;
     ASSERT_EQ(performInferenceWithRequest(request, response), ovms::StatusCode::MODEL_VERSION_MISSING);
 }
@@ -810,9 +820,10 @@ TEST_F(TestCustomLoader, CustomLoaderWithMissingModelFiles) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     tensorflow::serving::PredictResponse response;
     ASSERT_EQ(performInferenceWithRequest(request, response), ovms::StatusCode::MODEL_VERSION_MISSING);
 }
@@ -881,9 +892,10 @@ TEST_F(TestCustomLoader, CustomLoaderPredictionUsingManyCustomLoaders) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
 
     performPredict("dummy-a", 1, request);
     performPredict("dummy-b", 1, request);
@@ -1024,9 +1036,10 @@ TEST_F(TestCustomLoader, CustomLoaderMultipleLoaderWithSameLoaderName) {
     createConfigFileWithContent(configStr, fileToReload);
     ASSERT_EQ(manager.loadConfig(fileToReload), ovms::StatusCode::OK);
 
-    tensorflow::serving::PredictRequest request = preparePredictRequest(
+    tensorflow::serving::PredictRequest request;
+    preparePredictRequest(request,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     performPredict("dummy", 1, request);
 }
 

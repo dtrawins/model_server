@@ -43,6 +43,8 @@ using namespace tensorflow::serving;
 using testing::_;
 using testing::Return;
 
+using ::testing::ElementsAre;
+
 const uint NIREQ = 2;
 
 class EnsembleFlowTest : public TestWithTempDir {
@@ -163,10 +165,10 @@ TEST_F(EnsembleFlowTest, DummyModel) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
     Pipeline pipeline(*input_node, *output_node);
     pipeline.connect(*input_node, *model_node, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
     pipeline.connect(*model_node, *output_node, {{DUMMY_MODEL_OUTPUT_NAME, customPipelineOutputName}});
@@ -211,11 +213,11 @@ TEST_F(EnsembleFlowTest, TwoInnerNodesConnectedShapeRangePartiallyMatching) {
         response.Clear();
 
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node_A = std::make_unique<DLNode>("dummy_node_A", "dummy_A", requestedModelVersion, managerWithDummyModel);
         auto model_node_B = std::make_unique<DLNode>("dummy_node_B", "dummy_B", requestedModelVersion, managerWithDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
         Pipeline pipeline(*input_node, *output_node);
         pipeline.connect(*input_node, *model_node_A, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
         pipeline.connect(*model_node_A, *model_node_B, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
@@ -247,11 +249,11 @@ TEST_F(EnsembleFlowTest, TwoInnerNodesConnectedShapeRangePartiallyMatching) {
         response.Clear();
 
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node_A = std::make_unique<DLNode>("dummy_node_A", "dummy_A", requestedModelVersion, managerWithDummyModel);
         auto model_node_B = std::make_unique<DLNode>("dummy_node_B", "dummy_B", requestedModelVersion, managerWithDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
         Pipeline pipeline(*input_node, *output_node);
         pipeline.connect(*input_node, *model_node_A, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
         pipeline.connect(*model_node_A, *model_node_B, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
@@ -271,11 +273,11 @@ TEST_F(EnsembleFlowTest, TwoInnerNodesConnectedShapeRangePartiallyMatching) {
         response.Clear();
 
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node_A = std::make_unique<DLNode>("dummy_node_A", "dummy_A", requestedModelVersion, managerWithDummyModel);
         auto model_node_B = std::make_unique<DLNode>("dummy_node_B", "dummy_B", requestedModelVersion, managerWithDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
         Pipeline pipeline(*input_node, *output_node);
         pipeline.connect(*input_node, *model_node_A, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
         pipeline.connect(*model_node_A, *model_node_B, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
@@ -321,11 +323,11 @@ TEST_F(EnsembleFlowTest, TwoInnerNodesConnectedShapeRangeNotMatching) {
     response.Clear();
 
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node_A = std::make_unique<DLNode>("dummy_node_A", "dummy_A", requestedModelVersion, managerWithDummyModel);
     auto model_node_B = std::make_unique<DLNode>("dummy_node_B", "dummy_B", requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
     Pipeline pipeline(*input_node, *output_node);
     pipeline.connect(*input_node, *model_node_A, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
     pipeline.connect(*model_node_A, *model_node_B, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
@@ -343,10 +345,10 @@ class EnsembleFlowValidationTest : public EnsembleFlowTest {
 public:
     std::unique_ptr<Pipeline> createDummyPipeline(ConstructorEnabledModelManager& managerWithDummyModel) {
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
         auto pipeline = std::make_unique<Pipeline>(*input_node, *output_node);
         pipeline->connect(*input_node, *model_node, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
         pipeline->connect(*model_node, *output_node, {{DUMMY_MODEL_OUTPUT_NAME, customPipelineOutputName}});
@@ -601,9 +603,10 @@ TEST_F(EnsembleFlowTest, DummyModelDirectAndPipelineInference) {
     ASSERT_EQ(status, ovms::StatusCode::OK);
 
     // Prepare request for dummy model directly
-    tensorflow::serving::PredictRequest simpleModelRequest = preparePredictRequest(
+    tensorflow::serving::PredictRequest simpleModelRequest;
+    preparePredictRequest(simpleModelRequest,
         {{DUMMY_MODEL_INPUT_NAME,
-            std::tuple<ovms::shape_t, tensorflow::DataType>{{1, 10}, tensorflow::DataType::DT_FLOAT}}});
+            std::tuple<ovms::shape_t, ovms::Precision>{{1, 10}, ovms::Precision::FP32}}});
     std::vector<float> requestData{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0};
     auto& input = (*simpleModelRequest.mutable_inputs())[DUMMY_MODEL_INPUT_NAME];
     input.mutable_tensor_content()->assign((char*)requestData.data(), requestData.size() * sizeof(float));
@@ -629,10 +632,10 @@ TEST_F(EnsembleFlowTest, DummyModelDirectAndPipelineInference) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
     pipeline.connect(*input_node, *model_node, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
@@ -676,9 +679,9 @@ TEST_F(EnsembleFlowTest, SeriesOfDummyModels) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     std::unique_ptr<DLNode> dummy_nodes[N];
     for (int i = 0; i < N; i++) {
@@ -741,10 +744,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchSizeAny) {
     dagDummyModelOutputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName, ovms::Precision::FP32, ovms::Shape{ovms::Dimension::any(), 10}, Layout{"NC"});
     dagDummyModelInputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineInputName, ovms::Precision::FP32, ovms::Shape{ovms::Dimension::any(), 10}, Layout{"NC"});
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicBatchDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -791,10 +794,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchSizeRange) {
     dagDummyModelInputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineInputName, ovms::Precision::FP32, ovms::Shape{{1, 5}, 10}, Layout{"NC"});
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicBatchDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -816,10 +819,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchSizeRange) {
     proto.mutable_tensor_content()->assign((char*)requestData.data(), requestData.size() * sizeof(float));
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicBatchDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -861,10 +864,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithShapeAny) {
     dagDummyModelOutputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName, ovms::Precision::FP32, ovms::Shape{1, ovms::Dimension::any()}, Layout{"NC"});
     dagDummyModelInputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineInputName, ovms::Precision::FP32, ovms::Shape{1, ovms::Dimension::any()}, Layout{"NC"});
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicShapeDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -923,10 +926,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithShapeRange) {
     dagDummyModelInputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineInputName, ovms::Precision::FP32, ovms::Shape{1, {1, 5}}, Layout{"NC"});
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicShapeDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -961,10 +964,10 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithShapeRange) {
     proto.mutable_tensor_content()->assign((char*)requestData.data(), requestData.size() * sizeof(float));
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicShapeDummyModel);
         const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -1020,14 +1023,14 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchAndShapeSetToAny) {
         ovms::Shape{ovms::Dimension::any(), ovms::Dimension::any()},
         Layout{"NC"});
     const tensor_map_t inputsInfo{{customPipelineInputName, inputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, manager);
     auto tensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName,
         ovms::Precision::FP32,
         ovms::Shape{ovms::Dimension::any(), ovms::Dimension::any()},
         Layout{"NC"});
     const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1104,11 +1107,11 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchAndShapeSetToRange) {
         Layout{"NC"});
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, inputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, manager);
 
         const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -1143,11 +1146,11 @@ TEST_F(EnsembleFlowTest, ExecutePipelineWithBatchAndShapeSetToRange) {
     proto.mutable_tensor_content()->assign((char*)requestData.data(), requestData.size() * sizeof(float));
     {
         const tensor_map_t inputsInfo{{customPipelineInputName, inputTensorInfo}};
-        auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+        auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
         auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, manager);
 
         const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-        auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+        auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
         Pipeline pipeline(*input_node, *output_node);
 
@@ -1190,14 +1193,14 @@ TEST_F(EnsembleFlowTest, DISABLED_ExecutePipelineWithDynamicBatchSize) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicBatchDummyModel);
     auto outputTensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName,
         ovms::Precision::FP32,
         ovms::Shape{3, DUMMY_MODEL_OUTPUT_SIZE},
         Layout{"NC"});
     const tensor_map_t outputsInfo{{customPipelineOutputName, outputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1239,14 +1242,14 @@ TEST_F(EnsembleFlowTest, DISABLED_ExecutePipelineWithDynamicShape) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDynamicShapeDummyModel);
     auto tensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName,
         ovms::Precision::FP32,
         ovms::Shape{1, 5},
         Layout{"NC"});
     const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1317,14 +1320,14 @@ TEST_F(EnsembleFlowTest, DISABLED_ExecutePipelineWithDynamicBatchAndShape) {
         ovms::Shape{3, 500},
         Layout{"NC"});
     const tensor_map_t inputsInfo{{customPipelineInputName, inputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, manager);
     auto tensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName,
         ovms::Precision::FP32,
         ovms::Shape{3, 500},
         Layout{"NC"});
     const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1398,14 +1401,14 @@ TEST_F(EnsembleFlowTest, DISABLED_ExecutePipelineWithDynamicShape_RequestHasDiff
         ovms::Shape{BATCH_SIZE, WIDTH},
         Layout{"NC"});
     const tensor_map_t inputsInfo{{customPipelineInputName, inputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, manager);
     auto tensorInfo = std::make_shared<ovms::TensorInfo>(customPipelineOutputName,
         ovms::Precision::FP32,
         ovms::Shape{BATCH_SIZE, WIDTH},
         Layout{"NC"});
     const tensor_map_t outputsInfo{{customPipelineOutputName, tensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1442,7 +1445,7 @@ TEST_F(EnsembleFlowTest, ParallelDummyModels) {
             Layout{"NC"});
     }
     const tensor_map_t inputsInfo = inputsInfoTmp;
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     tensor_map_t outputsInfo;
     for (size_t i = 0; i < N; ++i) {
         const std::string outputName = customPipelineOutputName + std::to_string(i);
@@ -1452,7 +1455,7 @@ TEST_F(EnsembleFlowTest, ParallelDummyModels) {
                 DUMMY_MODEL_SHAPE,
                 Layout{"NC"}));
     }
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
     Pipeline pipeline(*input_node, *output_node);
     std::unique_ptr<DLNode> dummy_nodes[N];
 
@@ -1500,6 +1503,114 @@ TEST_F(EnsembleFlowTest, ParallelDummyModels) {
     }
 }
 
+class DLNodeFirst : public DLNode {
+    std::vector<int>& order;
+
+public:
+    DLNodeFirst(const std::string& nodeName, const std::string& modelName, std::optional<model_version_t> modelVersion,
+        ModelManager& modelManager, std::vector<int>& order, std::unordered_map<std::string, std::string> nodeOutputNameAlias = {},
+        std::optional<int32_t> demultiplyCount = std::nullopt, std::set<std::string> gatherFromNode = {}) :
+        DLNode(nodeName, modelName, modelVersion, modelManager, nodeOutputNameAlias, demultiplyCount, gatherFromNode),
+        order(order) {}
+    ovms::Status execute(session_key_t sessionId, PipelineEventQueue& notifyEndQueue) override {
+        auto status = DLNode::execute(sessionId, notifyEndQueue);
+        order.push_back(1);
+        return status;
+    }
+};
+
+class DLNodeDeferred : public DLNode {
+    std::vector<int>& order;
+
+public:
+    DLNodeDeferred(const std::string& nodeName, const std::string& modelName, std::optional<model_version_t> modelVersion,
+        ModelManager& modelManager, std::vector<int>& order, std::unordered_map<std::string, std::string> nodeOutputNameAlias = {},
+        std::optional<int32_t> demultiplyCount = std::nullopt, std::set<std::string> gatherFromNode = {}) :
+        DLNode(nodeName, modelName, modelVersion, modelManager, nodeOutputNameAlias, demultiplyCount, gatherFromNode),
+        order(order) {}
+    ovms::Status execute(session_key_t sessionId, PipelineEventQueue& notifyEndQueue) override {
+        auto status = DLNode::execute(sessionId, notifyEndQueue);
+        order.push_back(2);
+        return status;
+    }
+};
+
+class DLNodeNext : public DLNode {
+    std::vector<int>& order;
+
+public:
+    DLNodeNext(const std::string& nodeName, const std::string& modelName, std::optional<model_version_t> modelVersion,
+        ModelManager& modelManager, std::vector<int>& order, std::unordered_map<std::string, std::string> nodeOutputNameAlias = {},
+        std::optional<int32_t> demultiplyCount = std::nullopt, std::set<std::string> gatherFromNode = {}) :
+        DLNode(nodeName, modelName, modelVersion, modelManager, nodeOutputNameAlias, demultiplyCount, gatherFromNode),
+        order(order) {}
+    ovms::Status execute(session_key_t sessionId, PipelineEventQueue& notifyEndQueue) override {
+        auto status = DLNode::execute(sessionId, notifyEndQueue);
+        order.push_back(3);
+        return status;
+    }
+};
+
+TEST_F(EnsembleFlowTest, OrderOfScheduling) {
+    ConstructorEnabledModelManager managerWithDummyModel;
+    config.setNireq(1);
+    managerWithDummyModel.reloadModelWithVersions(config);
+
+    tensor_map_t inputsInfoTmp;
+    inputsInfoTmp[customPipelineInputName] = std::make_shared<ovms::TensorInfo>(customPipelineInputName,
+        ovms::Precision::FP32,
+        DUMMY_MODEL_SHAPE,
+        Layout{"NC"});
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfoTmp);
+
+    tensor_map_t outputsInfoTmp;
+    outputsInfoTmp[customPipelineOutputName + "_1"] = std::make_shared<ovms::TensorInfo>(customPipelineOutputName + "_1",
+        ovms::Precision::FP32,
+        DUMMY_MODEL_SHAPE,
+        Layout{"NC"});
+    outputsInfoTmp[customPipelineOutputName + "_2"] = std::make_shared<ovms::TensorInfo>(customPipelineOutputName + "_2",
+        ovms::Precision::FP32,
+        DUMMY_MODEL_SHAPE,
+        Layout{"NC"});
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfoTmp);
+
+    // DL Nodes
+    std::vector<int> order;
+    auto node_1 = std::make_unique<DLNodeFirst>("dummy_node_1", dummyModelName, requestedModelVersion, managerWithDummyModel, order);
+    auto node_2 = std::make_unique<DLNodeDeferred>("dummy_node_2", dummyModelName, requestedModelVersion, managerWithDummyModel, order);
+    auto node_3 = std::make_unique<DLNodeNext>("dummy_node_3", dummyModelName, requestedModelVersion, managerWithDummyModel, order);
+
+    Pipeline pipeline(*input_node, *output_node);
+
+    pipeline.connect(*input_node, *node_1, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
+
+    pipeline.connect(*node_1, *node_3, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
+    pipeline.connect(*input_node, *node_2, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
+
+    pipeline.connect(*node_2, *output_node, {{DUMMY_MODEL_OUTPUT_NAME, customPipelineOutputName + "_1"}});
+    pipeline.connect(*node_3, *output_node, {{DUMMY_MODEL_OUTPUT_NAME, customPipelineOutputName + "_2"}});
+
+    pipeline.push(std::move(input_node));
+    pipeline.push(std::move(output_node));
+
+    pipeline.push(std::move(node_1));
+    pipeline.push(std::move(node_2));
+    pipeline.push(std::move(node_3));
+
+    ASSERT_EQ(pipeline.execute(), StatusCode::OK);
+    EXPECT_THAT(order, ElementsAre(
+                           1,    // try to schedule node_1 with success
+                           2,    // try to schedule node_2, defer (with order ticket #1)
+                           3,    // after node_1 ends, try to run next node (node_3), defer with order ticket #2
+                           2,    // also try to schedule previously deferred nodes, node_2 gets scheduled with success
+                           3));  // node_2 ends, try to schedule previously deferred node_3 with success
+    /*
+         -----O1-----O3----
+    O---<                  >----O
+         -----O2-----------
+    */
+}
+
 TEST_F(EnsembleFlowTest, FailInDLNodeSetInputsMissingInput) {
     // Most basic configuration, just process single dummy model request
 
@@ -1509,10 +1620,10 @@ TEST_F(EnsembleFlowTest, FailInDLNodeSetInputsMissingInput) {
     managerWithDummyModel.reloadModelWithVersions(config);
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1535,10 +1646,10 @@ TEST_F(EnsembleFlowTest, FailInDLNodeExecuteInputsMissingInput) {
     managerWithDummyModel.reloadModelWithVersions(config);
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node = std::make_unique<DLNode>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1572,10 +1683,10 @@ TEST_F(EnsembleFlowTest, FailInDLNodeFetchResults) {
     managerWithDummyModel.reloadModelWithVersions(config);
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto failInFetchNode = std::make_unique<DLNodeFailInFetch>("failInFetch_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -1600,11 +1711,11 @@ TEST_F(EnsembleFlowTest, FailInDLNodeFetchResultsStreamIdReleasedForDeferredNode
     managerWithDummyModel.reloadModelWithVersions(config);
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto failInFetchNode = std::make_unique<DLNodeFailInFetch>("failInFetch_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     auto modelNode = std::make_unique<DLNodeFailInFetch>("dummy_node", dummyModelName, requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     Pipeline pipeline(*input_node, *output_node);
 
@@ -2926,9 +3037,9 @@ TEST_F(EnsembleFlowTest, ErrorHandlingSkipsDeferredNodesExecutionIfExecutionFail
                 ovms::Precision::FP32,
                 ovms::Shape{1, 5},
                 Layout{"NC"})}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
 
     auto dummy_node_1 = std::make_unique<DLNode>("dummy_node_1", dummyModelName, requestedModelVersion, managerWithDummyModel);
     auto dummy_node_2 = std::make_unique<DLNode>("dummy_node_2", dummyModelName, requestedModelVersion, managerWithDummyModel);
@@ -3166,11 +3277,11 @@ TEST_F(EnsembleFlowTest, RuntimeWrongBatchSizeArbitraryPosition) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node_1 = std::make_unique<DLNode>("dummy_node_1", "dummy_C1_N10", requestedModelVersion, managerWithDummyModel);
     auto model_node_2 = std::make_unique<DLNode>("dummy_node_2", "dummy_C1_N15", requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
     Pipeline pipeline(*input_node, *output_node);
     pipeline.connect(*input_node, *model_node_1, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
     pipeline.connect(*model_node_1, *model_node_2, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
@@ -3212,11 +3323,11 @@ TEST_F(EnsembleFlowTest, RuntimeWrongShapeArbitraryBatchPosition) {
 
     // Configure pipeline
     const tensor_map_t inputsInfo{{customPipelineInputName, dagDummyModelInputTensorInfo}};
-    auto input_node = std::make_unique<EntryNode>(&request, inputsInfo);
+    auto input_node = std::make_unique<EntryNode<PredictRequest>>(&request, inputsInfo);
     auto model_node_1 = std::make_unique<DLNode>("dummy_node_1", "dummy_C1_N10", requestedModelVersion, managerWithDummyModel);
     auto model_node_2 = std::make_unique<DLNode>("dummy_node_2", "dummy_C2_N10", requestedModelVersion, managerWithDummyModel);
     const tensor_map_t outputsInfo{{customPipelineOutputName, dagDummyModelOutputTensorInfo}};
-    auto output_node = std::make_unique<ExitNode>(&response, outputsInfo);
+    auto output_node = std::make_unique<ExitNode<PredictResponse>>(&response, outputsInfo);
     Pipeline pipeline(*input_node, *output_node);
     pipeline.connect(*input_node, *model_node_1, {{customPipelineInputName, DUMMY_MODEL_INPUT_NAME}});
     pipeline.connect(*model_node_1, *model_node_2, {{DUMMY_MODEL_OUTPUT_NAME, DUMMY_MODEL_INPUT_NAME}});
