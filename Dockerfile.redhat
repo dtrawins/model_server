@@ -25,6 +25,10 @@ ARG ov_source_branch=releases/2022/3
 
 ARG JOBS
 
+COPY entitlement /etc/pki/entitlement
+COPY rhsm-ca /etc/rhsm/ca
+RUN rm -f /etc/rhsm-host
+
 # build_type=[ opt, dbg ]
 ARG build_type=dbg
 ARG debug_bazel_flags=--strip=never\ --copt="-g"\ -c\ dbg
@@ -86,13 +90,12 @@ ARG NVIDIA=0
 RUN if [ "$NVIDIA" == "1" ] ; then true ; else exit 0 ; fi ; \
     # Removing the cache seems to be necessary here to avoid a crash
     yum install -y  \
-        tensorrt \
         libzstd-devel \
         cuda-11-8 \
-        libcudnn8 \
-        libcudnn8-devel \
-        libcutensor1 \
-        libcutensor-devel \
+        libcudnn8-8.6.0.163-1.cuda11.8 \
+        libcudnn8-devel-8.6.0.163-1.cuda11.8 \
+        libcutensor1-1.6.1.5-1 \
+        libcutensor-devel-1.6.1.5-1 \
         cuda-cudart-devel-11-8 && \
     yum install -y python38-Cython && \
     curl -L https://github.com/Kitware/ninja/releases/download/v1.10.0.gfb670.kitware.jobserver-1/ninja-1.10.0.gfb670.kitware.jobserver-1_x86_64-linux-gnu.tar.gz | tar xzv --strip-components=1 -C /usr/local/bin && \
@@ -162,13 +165,15 @@ WORKDIR /ovms/third_party/opencv
 RUN ./install_opencv.sh
 ####### End of OpenCV
 
+RUN yum install -y libusb-devel
+
 ARG ov_use_binary=1
 ARG DLDT_PACKAGE_URL
 ARG TEMP_DIR=/tmp/openvino_installer
 
 ################### BUILD OPENVINO FROM SOURCE - buildarg ov_use_binary=0  ############################
 # Build OpenVINO and nGraph (OV dependency) with D_GLIBCXX_USE_CXX11_ABI=0 or 1
-RUN if [ "$ov_use_binary" == "0" ] ; then true ; else exit 0 ; fi ; git clone https://github.com/openvinotoolkit/openvino --recurse-submodules --branch $ov_source_branch --depth 1 /openvino
+RUN if [ "$ov_use_binary" == "0" ] ; then true ; else exit 0 ; fi ; git clone https://github.com/openvinotoolkit/openvino --recurse-submodules --branch "releases/2022/3"  /openvino
 WORKDIR /openvino/build
 RUN if [ "$ov_use_binary" == "0" ] ; then true ; else exit 0 ; fi ; cmake -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE -DENABLE_SAMPLES=0 -DNGRAPH_USE_CXX_ABI=1 -DCMAKE_CXX_FLAGS=" -D_GLIBCXX_USE_CXX11_ABI=1 -Wno-error=parentheses " ..
 RUN if [ "$ov_use_binary" == "0" ] ; then true ; else exit 0 ; fi ; make --jobs=$JOBS
@@ -199,7 +204,7 @@ ENV OPENVINO_CONTRIB=/openvino_contrib
 
 # hadolint ignore=DL3003
 RUN if [ "$NVIDIA" == "1" ] ; then true ; else exit 0 ; fi ; \
-    git clone https://github.com/openvinotoolkit/openvino_contrib.git /openvino_contrib && cd /openvino_contrib && git checkout $ov_contrib_branch && git submodule update --init --recursive && \
+    git clone https://github.com/openvinotoolkit/openvino_contrib.git /openvino_contrib && cd /openvino_contrib && git checkout releases/2022/3 && git submodule update --init --recursive && \
     mkdir ${OPENVINO_BUILD_PATH} && \
     cd "${OPENVINO_BUILD_PATH}" && \
     cmake "${OPENVINO_HOME}" \
@@ -267,10 +272,12 @@ RUN wget -nv https://github.com/linux-test-project/lcov/releases/download/v1.16/
 
 COPY check_coverage.bat /ovms/
 
+# OVMS
+RUN bazel build ${debug_bazel_flags} ${minitrace_flags} --jobs=$JOBS //src:ovms
+
 ARG CHECK_COVERAGE=0
 # Test Coverage
-RUN if [ "$CHECK_COVERAGE" = "1" ] ; then bazel coverage --combined_report=lcov --test_summary=detailed --test_output=streamed //src:ovms_test > ${TEST_LOG} 2>&1 || { cat ${TEST_LOG} && rm -rf ${TEST_LOG} && exit 1 ; } && genhtml --output genhtml "$(bazel info output_path)/_coverage/_coverage_report.dat" ; fi ; \
-    bazel test ${debug_bazel_flags} --jobs=$JOBS --test_summary=detailed --test_output=streamed //src:ovms_test > ${TEST_LOG} 2>&1 || (cat ${TEST_LOG} && rm -rf ${TEST_LOG} && exit 1 ; ) && tail -n 100 ${TEST_LOG} && rm -rf ${TEST_LOG}
+RUN bazel test ${debug_bazel_flags} --jobs=$JOBS --test_summary=detailed --test_output=streamed //src:ovms_test > ${TEST_LOG} 2>&1 || (cat ${TEST_LOG} && rm -rf ${TEST_LOG} && exit 1 ; ) && tail -n 100 ${TEST_LOG} && rm -rf ${TEST_LOG}
 
 # C api shared library
 RUN bazel build ${debug_bazel_flags} --jobs $JOBS //src:ovms_shared
